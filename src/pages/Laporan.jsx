@@ -1,369 +1,219 @@
 
-import { useMemo, useState } from 'react'
-import {
-  TrendingUp,
-  TrendingDown,
-  Wallet,
-  ShoppingBag,
-  CalendarDays,
-} from 'lucide-react'
-import { useTransactions } from '../context/TransactionContext'
-import { useFinance } from '../context/FinanceContext'
+import { useState } from 'react'
+import { ChartNoAxesCombined } from 'lucide-react'
 
-const rupiah = (value) =>
+const formatRupiah = (value) =>
   new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
     maximumFractionDigits: 0,
-  }).format(Number(value) || 0)
+  }).format(value || 0)
 
-const dateKey = (date) => {
-  const d = new Date(date)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
+function Laporan() {
+  const [reportType, setReportType] = useState('semua')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
 
-export default function Laporan() {
-  const { transactions } = useTransactions()
-  const { expenses } = useFinance()
-
-  const [period, setPeriod] = useState('bulan')
-
-  const now = new Date()
-
-  const startDate = useMemo(() => {
-    const date = new Date(now)
-    date.setHours(0, 0, 0, 0)
-
-    if (period === 'hari') {
-      return date
-    }
-
-    if (period === 'minggu') {
-      date.setDate(date.getDate() - 6)
-      return date
-    }
-
-    if (period === 'bulan') {
-      date.setDate(1)
-      return date
-    }
-
-    date.setMonth(0, 1)
-    return date
-  }, [period])
-
-  const isInPeriod = (date) => {
-    const value = new Date(date)
-    return value >= startDate && value <= now
+  // Data sementara untuk tampilan laporan
+  const report = {
+    productsSold: 0,
+    totalSales: 0,
+    operationalExpenses: 0,
+    totalCapital: 0,
+    totalTransactions: 0,
+    availableProducts: 1,
+    grossProfit: 0,
+    netProfit: 0,
   }
 
-  const periodTransactions = transactions.filter(
-    (item) => isInPeriod(item.date)
-  )
-
-  const periodExpenses = expenses.filter(
-    (item) => isInPeriod(item.date)
-  )
-
-  const revenue = periodTransactions.reduce(
-    (sum, item) => sum + Number(item.total || 0),
-    0
-  )
-
-  const cost = periodTransactions.reduce(
-    (sum, transaction) =>
-      sum + transaction.items.reduce(
-        (itemSum, item) =>
-          itemSum +
-          Number(item.costPrice ?? 0) * Number(item.quantity || 0),
-        0
-      ),
-    0
-  )
-
-  const expenseTotal = periodExpenses.reduce(
-    (sum, item) => sum + Number(item.amount || 0),
-    0
-  )
-
-  const grossProfit = revenue - cost
-  const netProfit = grossProfit - expenseTotal
-
-  // Ringkasan penjualan per hari
-  const dailyData = useMemo(() => {
-    const result = []
-
-    const numberOfDays =
-      period === 'hari' ? 1 :
-      period === 'minggu' ? 7 :
-      period === 'bulan' ? now.getDate() : 12
-
-    for (let i = 0; i < numberOfDays; i++) {
-      let date
-
-      if (period === 'hari') {
-        date = new Date(now)
-      } else if (period === 'minggu') {
-        date = new Date(startDate)
-        date.setDate(startDate.getDate() + i)
-      } else if (period === 'bulan') {
-        date = new Date(now.getFullYear(), now.getMonth(), i + 1)
-      } else {
-        date = new Date(now.getFullYear(), i, 1)
-      }
-
-      const key = dateKey(date)
-
-      const amount = periodTransactions
-        .filter((item) => {
-          const transactionDate = new Date(item.date)
-          return period === 'tahun'
-            ? transactionDate.getFullYear() === now.getFullYear() &&
-              transactionDate.getMonth() === date.getMonth()
-            : dateKey(item.date) === key
-        })
-        .reduce((sum, item) => sum + Number(item.total || 0), 0)
-
-      result.push({
-        label: period === 'tahun'
-          ? date.toLocaleDateString('id-ID', { month: 'short' })
-          : date.getDate().toString(),
-        amount,
-      })
-    }
-
-    return result
-  }, [period, periodTransactions, startDate])
-
-  const maxRevenue = Math.max(
-    ...dailyData.map((item) => item.amount),
-    1
-  )
-
-  const paymentSummary = periodTransactions.reduce((result, item) => {
-    result[item.paymentMethod] =
-      (result[item.paymentMethod] || 0) + item.total
-    return result
-  }, {})
-
-  const expenseCategories = periodExpenses.reduce((result, item) => {
-    result[item.category] =
-      (result[item.category] || 0) + item.amount
-    return result
-  }, {})
+  const stats = [
+    {
+      title: 'Produk Terjual',
+      value: report.productsSold,
+    },
+    {
+      title: 'Total Penjualan',
+      value: formatRupiah(report.totalSales),
+    },
+    {
+      title: 'Biaya Operasional',
+      value: formatRupiah(report.operationalExpenses),
+    },
+    {
+      title: 'Total Modal (HPP)',
+      value: formatRupiah(report.totalCapital),
+    },
+    {
+      title: 'Total Transaksi',
+      value: report.totalTransactions,
+    },
+    {
+      title: 'Produk Tersedia',
+      value: report.availableProducts,
+    },
+  ]
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">
-            Laporan Keuangan
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Ringkasan pemasukan, pengeluaran, dan keuntungan usaha.
-          </p>
-        </div>
+    <div className="w-full space-y-5 pb-5">
 
-        <select
-          value={period}
-          onChange={(e) => setPeriod(e.target.value)}
-          className="border border-slate-200 rounded-xl px-4 py-3 bg-white text-sm outline-none focus:border-blue-500"
-        >
-          <option value="hari">Hari Ini</option>
-          <option value="minggu">7 Hari Terakhir</option>
-          <option value="bulan">Bulan Ini</option>
-          <option value="tahun">Tahun Ini</option>
-        </select>
-      </div>
+      {/* HEADER */}
+      <div className="relative min-h-[153px] overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-6 text-white shadow-lg shadow-blue-200">
 
-      {/* Kartu ringkasan */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-100 rounded-2xl p-5">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-slate-500">Omzet Penjualan</p>
-            <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
-              <ShoppingBag size={20} />
+        <div className="absolute -right-8 -top-10 h-40 w-40 rounded-full bg-white/10" />
+        <div className="absolute -bottom-12 left-10 h-32 w-32 rounded-full bg-white/5" />
+
+        <div className="relative">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-blue-600">
+              <ChartNoAxesCombined size={18} />
             </div>
-          </div>
-          <h2 className="text-xl font-bold text-slate-800 mt-3">
-            {rupiah(revenue)}
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            {periodTransactions.length} transaksi
-          </p>
-        </div>
 
-        <div className="bg-white border border-slate-100 rounded-2xl p-5">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-slate-500">Modal Barang Terjual</p>
-            <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center">
-              <Wallet size={20} />
-            </div>
-          </div>
-          <h2 className="text-xl font-bold text-slate-800 mt-3">
-            {rupiah(cost)}
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Harga modal produk yang terjual
-          </p>
-        </div>
-
-        <div className="bg-white border border-slate-100 rounded-2xl p-5">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-slate-500">Pengeluaran</p>
-            <div className="w-10 h-10 bg-red-50 text-red-500 rounded-xl flex items-center justify-center">
-              <TrendingDown size={20} />
-            </div>
-          </div>
-          <h2 className="text-xl font-bold text-slate-800 mt-3">
-            {rupiah(expenseTotal)}
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            {periodExpenses.length} catatan pengeluaran
-          </p>
-        </div>
-
-        <div className="bg-white border border-slate-100 rounded-2xl p-5">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-slate-500">Estimasi Laba Bersih</p>
-            <div className="w-10 h-10 bg-green-50 text-green-600 rounded-xl flex items-center justify-center">
-              <TrendingUp size={20} />
-            </div>
-          </div>
-          <h2 className={`text-xl font-bold mt-3 ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {rupiah(netProfit)}
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Laba kotor dikurangi pengeluaran
-          </p>
-        </div>
-      </div>
-
-      {/* Grafik penjualan */}
-      <div className="bg-white border border-slate-100 rounded-2xl p-5">
-        <div className="mb-6">
-          <h2 className="font-bold text-lg text-slate-800">
-            Grafik Penjualan
-          </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Pergerakan omzet berdasarkan periode terpilih.
-          </p>
-        </div>
-
-        <div className="h-64 flex items-end gap-2 sm:gap-3 overflow-x-auto pb-2">
-          {dailyData.map((item, index) => (
-            <div
-              key={`${item.label}-${index}`}
-              className="flex-1 min-w-5 h-full flex flex-col justify-end items-center gap-2"
-              title={`${item.label}: ${rupiah(item.amount)}`}
-            >
-              <div className="w-full h-full flex items-end">
-                <div
-                  className="w-full rounded-t-md bg-blue-500 hover:bg-blue-600 transition"
-                  style={{
-                    height: `${item.amount > 0 ? Math.max((item.amount / maxRevenue) * 100, 3) : 0}%`,
-                  }}
-                />
-              </div>
-              <span className="text-xs text-slate-400">
-                {item.label}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2 mt-4 text-xs text-slate-500">
-          <span className="w-3 h-3 rounded-sm bg-blue-500" />
-          Omzet penjualan
-        </div>
-      </div>
-
-      {/* Ringkasan tambahan */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white border border-slate-100 rounded-2xl p-5">
-          <h2 className="font-bold text-lg text-slate-800">
-            Metode Pembayaran
-          </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Ringkasan berdasarkan metode pembayaran.
-          </p>
-
-          <div className="space-y-4 mt-5">
-            {Object.entries(paymentSummary).length === 0 ? (
-              <p className="text-sm text-slate-400">
-                Belum ada transaksi pada periode ini.
-              </p>
-            ) : (
-              Object.entries(paymentSummary).map(([method, amount]) => (
-                <div key={method} className="flex justify-between text-sm">
-                  <span className="text-slate-600">{method}</span>
-                  <span className="font-semibold text-slate-800">
-                    {rupiah(amount)}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-100 rounded-2xl p-5">
-          <h2 className="font-bold text-lg text-slate-800">
-            Kategori Pengeluaran
-          </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Ringkasan biaya berdasarkan kategori.
-          </p>
-
-          <div className="space-y-4 mt-5">
-            {Object.entries(expenseCategories).length === 0 ? (
-              <p className="text-sm text-slate-400">
-                Belum ada pengeluaran pada periode ini.
-              </p>
-            ) : (
-              Object.entries(expenseCategories).map(([category, amount]) => (
-                <div key={category} className="flex justify-between text-sm">
-                  <span className="text-slate-600">{category}</span>
-                  <span className="font-semibold text-red-500">
-                    {rupiah(amount)}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Ringkasan laba */}
-      <div className="bg-white border border-slate-100 rounded-2xl p-5">
-        <h2 className="font-bold text-lg text-slate-800">
-          Rincian Perhitungan Keuangan
-        </h2>
-
-        <div className="space-y-4 mt-5 text-sm">
-          <div className="flex justify-between">
-            <span className="text-slate-500">Omzet penjualan</span>
-            <span className="font-semibold">{rupiah(revenue)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Modal barang terjual</span>
-            <span className="text-red-500">- {rupiah(cost)}</span>
-          </div>
-          <div className="flex justify-between border-t border-slate-100 pt-4">
-            <span className="font-semibold text-slate-700">Laba kotor</span>
-            <span className="font-semibold">{rupiah(grossProfit)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Pengeluaran operasional</span>
-            <span className="text-red-500">- {rupiah(expenseTotal)}</span>
-          </div>
-          <div className="flex justify-between border-t border-slate-100 pt-4">
-            <span className="font-bold text-slate-800">Estimasi laba bersih</span>
-            <span className={`font-bold text-lg ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {rupiah(netProfit)}
+            <span className="text-sm font-bold tracking-wide">
+              SUPERPOS
             </span>
+          </div>
+
+          <h1 className="text-2xl font-bold sm:text-3xl">
+            Laporan Penjualan
+          </h1>
+
+          <p className="mt-1 text-sm text-blue-50">
+            Pantau performa penjualan, biaya, dan laba pada periode terpilih.
+          </p>
+        </div>
+      </div>
+
+      {/* MAIN CONTAINER */}
+      <div className="overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-white to-blue-100 shadow-sm">
+
+        {/* BLUE TOP LINE */}
+        <div className="h-1.5 bg-gradient-to-r from-blue-600 to-blue-400" />
+
+        {/* FILTER */}
+        <div className="flex flex-col justify-between gap-5 border-b border-blue-200 px-5 py-5 lg:flex-row lg:items-center lg:px-7">
+
+          {/* REPORT TYPE */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="mr-2 text-sm font-bold text-blue-800">
+              TIPE LAPORAN:
+            </span>
+
+            {[
+              { label: 'SEMUA', value: 'semua' },
+              { label: 'ONLINE', value: 'online' },
+              { label: 'OFFLINE', value: 'offline' },
+            ].map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setReportType(item.value)}
+                className={`rounded-full border px-5 py-3 text-sm font-bold transition-all ${
+                  reportType === item.value
+                    ? 'border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-200'
+                    : 'border-blue-200 bg-white text-blue-700 hover:bg-blue-50'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {/* DATE RANGE */}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="mr-1 text-sm font-bold text-blue-800">
+              PERIODE:
+            </span>
+
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="h-12 w-full rounded-xl border border-blue-200 bg-white px-4 text-sm text-gray-700 outline-none focus:border-blue-500 sm:w-[180px]"
+            />
+
+            <span className="text-sm font-bold text-blue-800">
+              s/d
+            </span>
+
+            <input
+              type="date"
+              value={endDate}
+              min={startDate || undefined}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="h-12 w-full rounded-xl border border-blue-200 bg-white px-4 text-sm text-gray-700 outline-none focus:border-blue-500 sm:w-[180px]"
+            />
+          </div>
+        </div>
+
+        {/* REPORT BODY */}
+        <div className="p-5 sm:px-7 sm:py-5">
+
+          {/* STATISTIC CARDS */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+            {stats.map((item) => (
+              <div
+                key={item.title}
+                className="flex min-h-[101px] flex-col items-center justify-center rounded-2xl border border-blue-200 bg-white px-2 py-4 text-center shadow-sm"
+              >
+                <p className="text-sm text-gray-500">
+                  {item.title}
+                </p>
+
+                <h3 className="mt-2 text-xl font-extrabold text-gray-950">
+                  {item.value}
+                </h3>
+              </div>
+            ))}
+          </div>
+
+          {/* DIVIDER */}
+          <div className="my-5 border-t border-blue-200" />
+
+          {/* PROFIT */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+
+            <div className="relative overflow-hidden rounded-2xl bg-blue-600 px-5 py-5 text-center text-white shadow-md">
+              <div className="absolute -right-5 -top-7 h-20 w-20 rounded-full bg-white/10" />
+
+              <p className="relative text-sm font-semibold">
+                Laba Kotor
+              </p>
+
+              <h2 className="relative mt-2 text-2xl font-extrabold">
+                {formatRupiah(report.grossProfit)}
+              </h2>
+            </div>
+
+            <div className="relative overflow-hidden rounded-2xl bg-blue-600 px-5 py-5 text-center text-white shadow-md">
+              <div className="absolute -right-5 -top-7 h-20 w-20 rounded-full bg-white/10" />
+
+              <p className="relative text-sm font-semibold">
+                Laba Bersih
+              </p>
+
+              <h2 className="relative mt-2 text-2xl font-extrabold">
+                {formatRupiah(report.netProfit)}
+              </h2>
+            </div>
+
+          </div>
+
+          {/* EMPTY STATE */}
+          <div className="flex min-h-[175px] flex-col items-center justify-center px-4 text-center">
+
+            <h3 className="text-xl font-bold text-gray-900">
+              Tidak ada data laporan
+            </h3>
+
+            <p className="mt-2 text-sm text-gray-500">
+              Coba ubah filter tanggal atau channel penjualan.
+            </p>
+
           </div>
         </div>
       </div>
     </div>
   )
 }
+
+export default Laporan

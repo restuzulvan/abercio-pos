@@ -1,352 +1,567 @@
 
 import { useMemo, useState } from 'react'
 import {
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  Receipt,
   Search,
-  ReceiptText,
-  Eye,
-  X,
-  CalendarDays,
   ShoppingBag,
-  Banknote,
+  CalendarDays,
+  X,
+  Eye,
 } from 'lucide-react'
+
 import { useTransactions } from '../context/TransactionContext'
 
-const rupiah = (value) =>
+const formatRupiah = (value) =>
   new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
     maximumFractionDigits: 0,
   }).format(Number(value) || 0)
 
-const dateFormat = (date) =>
-  new Date(date).toLocaleString('id-ID', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
+const monthNames = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+]
 
-export default function HistoriTransaksi() {
-  const { transactions } = useTransactions()
+const getTransactionDate = (transaction) => {
+  const value =
+    transaction.createdAt ||
+    transaction.date ||
+    transaction.transactionDate ||
+    transaction.tanggal
 
-  const [search, setSearch] = useState('')
-  const [selectedTransaction, setSelectedTransaction] = useState(null)
-  const [filter, setFilter] = useState('Semua')
+  if (!value) return null
 
-  const today = new Date().toDateString()
+  const date = new Date(value)
 
-  const todayTransactions = transactions.filter(
-    (item) => new Date(item.date).toDateString() === today
-  )
+  return Number.isNaN(date.getTime()) ? null : date
+}
 
-  const todayRevenue = todayTransactions.reduce(
-    (sum, item) => sum + item.total,
+const getTransactionItems = (transaction) => {
+  return transaction.cart || transaction.items || transaction.products || []
+}
+
+const getTransactionTotal = (transaction) => {
+  return Number(
+    transaction.total ??
+    transaction.grandTotal ??
+    transaction.totalPrice ??
     0
   )
+}
+
+const getTransactionMode = (transaction) => {
+  const mode = String(
+    transaction.mode ||
+    transaction.type ||
+    transaction.transactionType ||
+    'offline'
+  ).toLowerCase()
+
+  return mode.includes('online') ? 'online' : 'offline'
+}
+
+function HistoriTransaksi() {
+  const { transactions = [] } = useTransactions()
+
+  const now = new Date()
+
+  // Default menampilkan tiga bulan terakhir
+  const [periodOffset, setPeriodOffset] = useState(0)
+  const [filter, setFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [selectedTransaction, setSelectedTransaction] = useState(null)
+
+  const currentMonth = new Date(
+    now.getFullYear(),
+    now.getMonth() - 2 + periodOffset * 3,
+    1
+  )
+
+  const periodMonths = Array.from({ length: 3 }, (_, index) =>
+    new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth() + index,
+      1
+    )
+  )
+
+  const firstMonth = periodMonths[0]
+  const lastMonth = periodMonths[2]
+
+  const periodLabel =
+    `${monthNames[firstMonth.getMonth()]} - ` +
+    `${monthNames[lastMonth.getMonth()]} ` +
+    `${lastMonth.getFullYear()}`
 
   const filteredTransactions = useMemo(() => {
-    return transactions.filter((item) => {
-      const keyword = search.toLowerCase()
+    return transactions
+      .filter((transaction) => {
+        const date = getTransactionDate(transaction)
 
-      const matchSearch =
-        item.invoice.toLowerCase().includes(keyword) ||
-        item.customerName.toLowerCase().includes(keyword)
+        if (!date) return false
 
-      const matchFilter =
-        filter === 'Semua' ||
-        (filter === 'Tunai' && item.paymentMethod === 'Tunai') ||
-        (filter === 'Non-Tunai' && item.paymentMethod !== 'Tunai')
+        const startDate = new Date(
+          firstMonth.getFullYear(),
+          firstMonth.getMonth(),
+          1
+        )
 
-      return matchSearch && matchFilter
+        const endDate = new Date(
+          lastMonth.getFullYear(),
+          lastMonth.getMonth() + 1,
+          1
+        )
+
+        const matchPeriod =
+          date >= startDate && date < endDate
+
+        const transactionMode = getTransactionMode(transaction)
+
+        const matchFilter =
+          filter === 'all' || transactionMode === filter
+
+        const keyword = search.toLowerCase()
+
+        const customerName = String(
+          transaction.customerName || 'Pelanggan Umum'
+        ).toLowerCase()
+
+        const transactionId = String(
+          transaction.id || transaction.invoice || ''
+        ).toLowerCase()
+
+        const matchSearch =
+          customerName.includes(keyword) ||
+          transactionId.includes(keyword)
+
+        return matchPeriod && matchFilter && matchSearch
+      })
+      .sort((a, b) => {
+        return (
+          getTransactionDate(b) - getTransactionDate(a)
+        )
+      })
+  }, [
+    transactions,
+    firstMonth,
+    lastMonth,
+    filter,
+    search,
+  ])
+
+  const isCurrentPeriod = periodOffset === 0
+
+  const formatDate = (dateValue) => {
+    const date = getTransactionDate({
+      createdAt: dateValue,
     })
-  }, [transactions, search, filter])
+
+    if (!date) return '-'
+
+    return date.toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  const handlePeriodChange = (direction) => {
+    setPeriodOffset((current) => current + direction)
+  }
+
+  const getTransactionId = (transaction) => {
+    return (
+      transaction.invoice ||
+      transaction.id ||
+      'TRX'
+    )
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">
-          Histori Transaksi
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Pantau dan periksa seluruh transaksi penjualan.
-        </p>
-      </div>
+    <div className="min-h-screen space-y-5 pb-6">
 
-      {/* Statistik */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div className="bg-white border border-slate-100 rounded-2xl p-5">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-slate-500">
-              Total Transaksi
-            </p>
-            <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
-              <ReceiptText size={20} />
-            </div>
-          </div>
-          <h2 className="text-2xl font-bold text-slate-800 mt-3">
-            {transactions.length}
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Seluruh transaksi tersimpan
-          </p>
-        </div>
+      {/* HEADER */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-blue-400 p-6 text-white shadow-lg">
+        <div className="absolute -right-8 -top-12 h-40 w-40 rounded-full bg-white/10" />
+        <div className="absolute -bottom-10 left-20 h-28 w-28 rounded-full bg-white/5" />
 
-        <div className="bg-white border border-slate-100 rounded-2xl p-5">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-slate-500">
-              Transaksi Hari Ini
-            </p>
-            <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center">
-              <CalendarDays size={20} />
+        <div className="relative">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="rounded-lg bg-white/20 p-2">
+              <Clock size={21} />
             </div>
-          </div>
-          <h2 className="text-2xl font-bold text-slate-800 mt-3">
-            {todayTransactions.length}
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Jumlah transaksi hari ini
-          </p>
-        </div>
 
-        <div className="bg-white border border-slate-100 rounded-2xl p-5">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-slate-500">
-              Penjualan Hari Ini
-            </p>
-            <div className="w-10 h-10 bg-green-50 text-green-600 rounded-xl flex items-center justify-center">
-              <Banknote size={20} />
-            </div>
+            <span className="text-sm font-bold tracking-wide">
+              ABERCIO POS
+            </span>
           </div>
-          <h2 className="text-xl font-bold text-slate-800 mt-3">
-            {rupiah(todayRevenue)}
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Total nilai penjualan hari ini
+
+          <h1 className="text-2xl font-bold sm:text-3xl">
+            Riwayat Transaksi
+          </h1>
+
+          <p className="mt-1 text-sm text-blue-50">
+            Lihat semua transaksi yang telah tercatat di toko Anda.
           </p>
         </div>
       </div>
 
-      {/* Tabel transaksi */}
-      <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden">
-        <div className="p-5 border-b border-slate-100">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div>
-              <h2 className="font-bold text-lg text-slate-800">
-                Daftar Transaksi
-              </h2>
-              <p className="text-sm text-slate-400 mt-1">
-                Riwayat penjualan Abercio Frozen Food.
-              </p>
-            </div>
+      {/* HISTORY CONTAINER */}
+      <div className="overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-white to-blue-100 shadow-sm">
 
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative">
-                <Search
-                  size={18}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Cari nomor atau pelanggan..."
-                  className="w-full sm:w-64 pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm"
-                />
+        {/* TOP BORDER */}
+        <div className="h-1.5 bg-blue-600" />
+
+        {/* FILTER */}
+        <div className="flex flex-wrap items-center gap-3 border-b border-blue-100 px-5 py-4">
+          <span className="mr-1 text-sm font-bold text-blue-700">
+            FILTER:
+          </span>
+
+          <button
+            onClick={() =>
+              setFilter(filter === 'online' ? 'all' : 'online')
+            }
+            className={`rounded-full border px-4 py-1.5 text-sm font-bold transition ${
+              filter === 'online'
+                ? 'border-blue-600 bg-blue-600 text-white'
+                : 'border-blue-200 bg-white text-blue-600 hover:bg-blue-50'
+            }`}
+          >
+            ONLINE
+          </button>
+
+          <button
+            onClick={() =>
+              setFilter(filter === 'offline' ? 'all' : 'offline')
+            }
+            className={`rounded-full border px-4 py-1.5 text-sm font-bold transition ${
+              filter === 'offline'
+                ? 'border-blue-600 bg-blue-600 text-white'
+                : 'border-blue-200 bg-white text-blue-600 hover:bg-blue-50'
+            }`}
+          >
+            OFFLINE
+          </button>
+        </div>
+
+        {/* PERIOD NAVIGATION */}
+        <div className="flex items-center justify-between gap-3 border-b border-blue-200 px-5 py-4">
+
+          <button
+            onClick={() => handlePeriodChange(-1)}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 transition hover:bg-blue-200"
+            title="Periode sebelumnya"
+          >
+            <ChevronLeft size={24} />
+          </button>
+
+          <div className="min-w-0 rounded-xl border border-blue-200 bg-white px-5 py-2 text-center shadow-sm">
+            <p className="text-xs font-bold text-blue-600">
+              PERIODE
+            </p>
+
+            <p className="mt-1 text-sm font-bold text-gray-900 sm:text-base">
+              {periodLabel}
+            </p>
+          </div>
+
+          <button
+            onClick={() => handlePeriodChange(1)}
+            disabled={isCurrentPeriod}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-blue-400 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:text-gray-300"
+            title="Periode berikutnya"
+          >
+            <ChevronRight size={24} />
+          </button>
+        </div>
+
+        {/* SEARCH */}
+        <div className="border-b border-blue-100 p-4">
+          <div className="relative">
+            <Search
+              size={19}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400"
+            />
+
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Cari nama pelanggan atau nomor transaksi..."
+              className="h-11 w-full rounded-xl border border-blue-200 bg-white pl-11 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+        </div>
+
+        {/* TRANSACTION LIST */}
+        <div className="min-h-[400px] p-5">
+
+          {filteredTransactions.length === 0 ? (
+            <div className="flex min-h-[350px] flex-col items-center justify-center text-center">
+
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-blue-100">
+                <Receipt size={38} className="text-blue-400" />
               </div>
 
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-blue-500"
-              >
-                <option value="Semua">Semua metode</option>
-                <option value="Tunai">Tunai</option>
-                <option value="Non-Tunai">Non-Tunai</option>
-              </select>
-            </div>
-          </div>
-        </div>
+              <h3 className="mt-5 text-lg font-bold text-gray-900">
+                Tidak ada riwayat transaksi
+              </h3>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-500">
-              <tr>
-                <th className="px-5 py-4 font-medium">No.</th>
-                <th className="px-5 py-4 font-medium">Nomor Transaksi</th>
-                <th className="px-5 py-4 font-medium">Tanggal</th>
-                <th className="px-5 py-4 font-medium">Pelanggan</th>
-                <th className="px-5 py-4 font-medium">Total</th>
-                <th className="px-5 py-4 font-medium">Pembayaran</th>
-                <th className="px-5 py-4 font-medium">Status</th>
-                <th className="px-5 py-4 font-medium text-center">Aksi</th>
-              </tr>
-            </thead>
+              <p className="mt-1 text-sm text-gray-500">
+                pada periode yang dipilih.
+              </p>
 
-            <tbody className="divide-y divide-slate-100">
-              {filteredTransactions.map((item, index) => (
-                <tr key={item.id} className="hover:bg-slate-50">
-                  <td className="px-5 py-4 text-slate-500">
-                    {index + 1}
-                  </td>
-
-                  <td className="px-5 py-4 font-semibold text-blue-600 whitespace-nowrap">
-                    {item.invoice}
-                  </td>
-
-                  <td className="px-5 py-4 text-slate-500 whitespace-nowrap">
-                    {dateFormat(item.date)}
-                  </td>
-
-                  <td className="px-5 py-4 text-slate-700">
-                    {item.customerName}
-                  </td>
-
-                  <td className="px-5 py-4 font-semibold text-slate-800 whitespace-nowrap">
-                    {rupiah(item.total)}
-                  </td>
-
-                  <td className="px-5 py-4 text-slate-600">
-                    {item.paymentMethod}
-                  </td>
-
-                  <td className="px-5 py-4">
-                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-600">
-                      {item.status}
-                    </span>
-                  </td>
-
-                  <td className="px-5 py-4 text-center">
-                    <button
-                      onClick={() => setSelectedTransaction(item)}
-                      className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      <Eye size={16} />
-                      Detail
-                    </button>
-                  </td>
-                </tr>
-              ))}
-
-              {filteredTransactions.length === 0 && (
-                <tr>
-                  <td colSpan="8" className="px-5 py-14 text-center">
-                    <ReceiptText
-                      size={38}
-                      className="mx-auto text-slate-300"
-                    />
-                    <p className="text-slate-500 mt-3">
-                      Belum ada transaksi ditemukan.
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Transaksi yang berhasil akan muncul di sini.
-                    </p>
-                  </td>
-                </tr>
+              {(filter !== 'all' || search) && (
+                <button
+                  onClick={() => {
+                    setFilter('all')
+                    setSearch('')
+                  }}
+                  className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Reset Filter
+                </button>
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
 
-        <div className="px-5 py-4 border-t border-slate-100 text-xs text-slate-400">
-          Menampilkan {filteredTransactions.length} dari {transactions.length} transaksi
+              <div className="mb-4 flex items-center justify-between">
+                <p className="text-sm text-gray-600">
+                  Menampilkan{' '}
+                  <span className="font-bold text-blue-600">
+                    {filteredTransactions.length}
+                  </span>{' '}
+                  transaksi
+                </p>
+
+                <span className="text-xs text-gray-400">
+                  Terbaru
+                </span>
+              </div>
+
+              {filteredTransactions.map((transaction, index) => {
+                const items = getTransactionItems(transaction)
+                const transactionMode = getTransactionMode(transaction)
+                const total = getTransactionTotal(transaction)
+
+                const itemCount = items.reduce(
+                  (sum, item) =>
+                    sum + Number(item.quantity || 1),
+                  0
+                )
+
+                return (
+                  <div
+                    key={transaction.id || transaction.invoice || index}
+                    className="flex flex-col gap-4 rounded-xl border border-blue-100 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow-md sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+                        <ShoppingBag size={23} />
+                      </div>
+
+                      <div className="min-w-0">
+                        <h3 className="truncate text-sm font-bold text-gray-900">
+                          {transaction.customerName || 'Pelanggan Umum'}
+                        </h3>
+
+                        <p className="mt-1 text-xs text-gray-400">
+                          {getTransactionId(transaction)}
+                        </p>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                              transactionMode === 'online'
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}
+                          >
+                            {transactionMode.toUpperCase()}
+                          </span>
+
+                          <span className="text-xs text-gray-400">
+                            {formatDate(
+                              transaction.createdAt ||
+                              transaction.date ||
+                              transaction.transactionDate ||
+                              transaction.tanggal
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 sm:justify-end">
+                      <div className="text-left sm:text-right">
+                        <p className="text-xs text-gray-400">
+                          {itemCount} item
+                        </p>
+
+                        <p className="mt-1 text-base font-bold text-blue-700">
+                          {formatRupiah(total)}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() =>
+                          setSelectedTransaction(transaction)
+                        }
+                        className="flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-600 transition hover:bg-blue-50"
+                      >
+                        <Eye size={16} />
+                        Detail
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Modal detail transaksi */}
+      {/* DETAIL MODAL */}
       {selectedTransaction && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl">
+
+            <div className="flex items-center justify-between border-b border-gray-100 p-5">
               <div>
-                <h2 className="text-lg font-bold text-slate-800">
+                <h2 className="text-lg font-bold text-gray-900">
                   Detail Transaksi
                 </h2>
-                <p className="text-sm text-blue-600 mt-1">
-                  {selectedTransaction.invoice}
+
+                <p className="mt-1 text-xs text-gray-400">
+                  {getTransactionId(selectedTransaction)}
                 </p>
               </div>
 
               <button
                 onClick={() => setSelectedTransaction(null)}
-                className="text-slate-400 hover:text-slate-700"
-                aria-label="Tutup detail"
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100"
               >
-                <X size={22} />
+                <X size={20} />
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-slate-400">Tanggal</p>
-                  <p className="font-medium mt-1">
-                    {dateFormat(selectedTransaction.date)}
+            <div className="space-y-4 p-5">
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-blue-50 p-3">
+                  <p className="text-xs text-gray-500">
+                    Pelanggan
+                  </p>
+
+                  <p className="mt-1 text-sm font-bold text-gray-800">
+                    {selectedTransaction.customerName || 'Pelanggan Umum'}
                   </p>
                 </div>
 
-                <div>
-                  <p className="text-slate-400">Pelanggan</p>
-                  <p className="font-medium mt-1">
-                    {selectedTransaction.customerName}
+                <div className="rounded-xl bg-blue-50 p-3">
+                  <p className="text-xs text-gray-500">
+                    Tanggal
+                  </p>
+
+                  <p className="mt-1 text-sm font-bold text-gray-800">
+                    {formatDate(
+                      selectedTransaction.createdAt ||
+                      selectedTransaction.date ||
+                      selectedTransaction.transactionDate ||
+                      selectedTransaction.tanggal
+                    )}
                   </p>
                 </div>
               </div>
 
-              <div className="border-t border-b border-dashed border-slate-200 py-4">
-                <h3 className="font-semibold text-slate-800 mb-3">
+              <div>
+                <h3 className="mb-3 text-sm font-bold text-gray-800">
                   Produk Dibeli
                 </h3>
 
                 <div className="space-y-3">
-                  {selectedTransaction.items.map((item, index) => (
+                  {getTransactionItems(selectedTransaction).map((item, index) => (
                     <div
-                      key={`${item.productId}-${index}`}
-                      className="flex justify-between gap-3 text-sm"
+                      key={item.id || index}
+                      className="flex items-center justify-between gap-3 border-b border-gray-100 pb-3"
                     >
                       <div>
-                        <p className="font-medium text-slate-700">
-                          {item.name}
+                        <p className="text-sm font-semibold text-gray-800">
+                          {item.name || item.productName || 'Produk'}
                         </p>
-                        <p className="text-xs text-slate-400 mt-1">
-                          {item.quantity} x {rupiah(item.price)}
+
+                        <p className="mt-1 text-xs text-gray-400">
+                          {item.quantity || 1} x {formatRupiah(item.price)}
                         </p>
                       </div>
 
-                      <p className="font-semibold text-slate-800 whitespace-nowrap">
-                        {rupiah(item.subtotal)}
+                      <p className="text-sm font-bold text-gray-800">
+                        {formatRupiah(
+                          Number(item.price || 0) *
+                          Number(item.quantity || 1)
+                        )}
                       </p>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Total</span>
-                  <span className="font-bold text-slate-800">
-                    {rupiah(selectedTransaction.total)}
+              <div className="space-y-2 rounded-xl bg-blue-50 p-4">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Subtotal</span>
+                  <span className="font-semibold">
+                    {formatRupiah(selectedTransaction.subtotal)}
                   </span>
                 </div>
 
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Metode pembayaran</span>
-                  <span>{selectedTransaction.paymentMethod}</span>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Diskon</span>
+                  <span className="font-semibold text-green-600">
+                    -{formatRupiah(selectedTransaction.discount)}
+                  </span>
                 </div>
 
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Uang diterima</span>
-                  <span>{rupiah(selectedTransaction.payment)}</span>
+                <div className="flex justify-between border-t border-blue-200 pt-3">
+                  <span className="font-bold text-gray-900">
+                    Total
+                  </span>
+
+                  <span className="text-lg font-extrabold text-blue-600">
+                    {formatRupiah(getTransactionTotal(selectedTransaction))}
+                  </span>
                 </div>
 
-                <div className="flex justify-between text-green-600">
-                  <span>Kembalian</span>
-                  <span className="font-bold">
-                    {rupiah(selectedTransaction.change)}
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Metode Pembayaran</span>
+                  <span className="font-semibold">
+                    {selectedTransaction.paymentMethod || '-'}
                   </span>
                 </div>
               </div>
+            </div>
 
+            <div className="border-t border-gray-100 p-5">
               <button
                 onClick={() => setSelectedTransaction(null)}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-semibold"
+                className="w-full rounded-xl bg-blue-600 py-3 font-bold text-white transition hover:bg-blue-700"
               >
                 Tutup
               </button>
@@ -357,3 +572,5 @@ export default function HistoriTransaksi() {
     </div>
   )
 }
+
+export default HistoriTransaksi

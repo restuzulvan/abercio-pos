@@ -35,9 +35,9 @@ const menuGroups = [
   {
     title: 'TRANSAKSI',
     items: [
-      { label: 'Kasir', path: '/kasir', icon: ShoppingCart },
-      { label: 'Histori Transaksi', path: '/histori', icon: History },
-      { label: 'Stok', path: '/stok', icon: Boxes },
+      { label: 'Transaksi', path: '/kasir', icon: ShoppingCart },
+      { label: 'Histori', path: '/histori', icon: History },
+  
     ],
   },
   {
